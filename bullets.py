@@ -1,0 +1,153 @@
+"""
+Mô-đun quản lý Đạn Bắn (Bullet) của trò chơi Kingdom Guardians.
+
+Mô-đun này định nghĩa lớp Bullet đảm nhiệm toàn bộ vòng đời của một viên đạn:
+bay về phía mục tiêu, va chạm, gây sát thương và hiển thị hiệu ứng hình ảnh.
+
+Lớp:
+    Bullet: Viên đạn bay từ tháp đến mục tiêu. Hỗ trợ ba loại:
+        - "arrow" : Tên cung — vẽ thân tên và mũi thép xoay theo hướng bay.
+        - "magic"  : Phép thuật thường — quả cầu xanh/tím phát sáng.
+        - "aoe"    : Nổ diện (Area of Effect) — quả cầu tím lớn; khi chạm mục tiêu
+            thực thi giải thuật quét diện O(n): duyệt toàn bộ enemies_ref, tính
+            khoảng cách Euclid và gây sát thương cho mọi kẻ địch trong aoe_radius.
+            Sau đó phát hiệu ứng vòng nổ lan rộng trong 18 frame.
+"""
+import pygame
+import math
+from settings import *
+
+class Bullet:
+    """
+    Đạn bay từ tháp đến mục tiêu.
+    Hỗ trợ 3 loại: 'arrow' (cung), 'magic' (phép), 'aoe' (nổ diện).
+    """
+    def __init__(self, x, y, target, damage, speed, b_type="arrow",
+                 wave_manager=None, aoe_radius=0):
+        self.x = x
+        self.y = y
+        self.target = target
+        self.damage = damage
+        self.speed = speed
+        self.alive = True
+        self.b_type = b_type
+        self.angle = 0
+        # ── Dữ liệu AoE ──────────────────────────────────────────────────────
+        self.wave_manager = wave_manager # Tham chiếu quản lý wave chứa spatial_hash
+        self.aoe_radius  = aoe_radius    # Bán kính nổ
+        self.exploding   = False         # Đang trong pha nổ?
+        self.explode_timer = 0           # Đếm ngược frame hiệu ứng nổ
+        self.explode_x = 0              # Toạ độ tâm nổ
+        self.explode_y = 0
+
+    def update(self):
+        # Nếu đang trong pha nổ, đếm ngược rồi huỷ đạn
+        if self.exploding:
+            self.explode_timer -= 1
+            if self.explode_timer <= 0:
+                self.alive = False
+            return
+
+        dx = self.target.x - self.x
+        dy = self.target.y - self.y
+        dist = math.hypot(dx, dy)
+        self.angle = math.degrees(math.atan2(-dy, dx))
+
+        if dist < self.speed:
+            if self.b_type == "aoe" and self.wave_manager is not None:
+                # ── ii. Giải thuật quét diện AoE với Spatial Hashing ─────────
+                self.explode_x = self.target.x
+                self.explode_y = self.target.y
+                
+                # Lấy kẻ địch từ spatial hash xung quanh tâm nổ
+                cell_size = self.wave_manager.cell_size
+                cx = int(self.explode_x // cell_size)
+                cy = int(self.explode_y // cell_size)
+                cells_radius = int(math.ceil(self.aoe_radius / cell_size))
+                
+                for nx in range(cx - cells_radius, cx + cells_radius + 1):
+                    for ny in range(cy - cells_radius, cy + cells_radius + 1):
+                        for enemy in self.wave_manager.spatial_hash.get((nx, ny), []):
+                            d = math.hypot(enemy.x - self.explode_x, enemy.y - self.explode_y)
+                            if d <= self.aoe_radius:
+                                enemy.hp -= self.damage
+                                
+                self.exploding = True
+                self.explode_timer = 18
+            else:
+                # Đạn thường: chỉ trừ máu mục tiêu
+                self.target.hp -= self.damage
+                self.alive = False
+        else:
+            self.x += (dx / dist) * self.speed
+            self.y += (dy / dist) * self.speed
+
+    def draw(self, screen):
+        if self.exploding:
+            progress = 1.0 - (self.explode_timer / 18)
+            radius   = max(1, int(self.aoe_radius * progress))
+            alpha    = int(220 * (self.explode_timer / 18))
+            # Vòng nổ ngoài
+            s = pygame.Surface((radius*2+10, radius*2+10), pygame.SRCALPHA)
+            cx, cy = radius+5, radius+5
+            pygame.draw.circle(s, (255,80,255, max(0,alpha//4)), (cx,cy), radius)
+            pygame.draw.circle(s, (200,60,255, alpha),           (cx,cy), radius,   5)
+            pygame.draw.circle(s, (255,180,255,alpha),           (cx,cy), radius//2, 3)
+            if radius > 10:
+                pygame.draw.circle(s, (255,255,255,alpha//2),   (cx,cy), radius//4, 2)
+            screen.blit(s, (int(self.explode_x)-radius-5, int(self.explode_y)-radius-5))
+            return
+
+        if self.b_type == "arrow":
+            length = 12
+            rad = math.radians(-self.angle)
+            cos_a, sin_a = math.cos(rad), math.sin(rad)
+            tip_x  = self.x + cos_a * length
+            tip_y  = self.y + sin_a * length
+            tail_x = self.x - cos_a * length
+            tail_y = self.y - sin_a * length
+            # Thân tẫn gỗ
+            pygame.draw.line(screen, (120,70,20), (tail_x,tail_y), (tip_x,tip_y), 2)
+            pygame.draw.line(screen, (160,110,50),(tail_x,tail_y),(self.x,self.y), 1)
+            # Lông vũ (fletching) cượng tại đuôi
+            perp_x, perp_y = -sin_a * 4, cos_a * 4
+            pygame.draw.line(screen, (200,180,160),
+                             (tail_x+perp_x, tail_y+perp_y),
+                             (tail_x+cos_a*6, tail_y+sin_a*6), 1)
+            pygame.draw.line(screen, (200,180,160),
+                             (tail_x-perp_x, tail_y-perp_y),
+                             (tail_x+cos_a*6, tail_y+sin_a*6), 1)
+            # Mũi thép tam giác
+            a_s = pygame.Surface((12,12), pygame.SRCALPHA)
+            pygame.draw.polygon(a_s, (210,215,225), [(0,2),(0,10),(10,6)])
+            pygame.draw.polygon(a_s, (240,245,255), [(0,2),(0,10),(10,6)], 1)
+            r_a = pygame.transform.rotate(a_s, self.angle)
+            screen.blit(r_a, r_a.get_rect(center=(tip_x,tip_y)).topleft)
+
+        elif self.b_type == "magic":
+            # Quả cầu phép 3 lớp glow
+            gx, gy = int(self.x), int(self.y)
+            g = pygame.Surface((22,22), pygame.SRCALPHA)
+            pygame.draw.circle(g, (80,0,200,100), (11,11), 10)
+            screen.blit(g, (gx-11, gy-11))
+            pygame.draw.circle(screen, (0,180,255), (gx,gy), 6)
+            pygame.draw.circle(screen, (100,220,255),(gx,gy), 4)
+            pygame.draw.circle(screen, WHITE,        (gx,gy), 2)
+
+        else:  # aoe
+            gx, gy = int(self.x), int(self.y)
+            # Hào quang ngoài
+            g = pygame.Surface((28,28), pygame.SRCALPHA)
+            pygame.draw.circle(g, (180,0,255,80),  (14,14), 13)
+            screen.blit(g, (gx-14,gy-14))
+            # Lớp giữa
+            pygame.draw.circle(screen, (140,0,220), (gx,gy), 9)
+            pygame.draw.circle(screen, (190,60,255),(gx,gy), 6)
+            pygame.draw.circle(screen, (220,140,255),(gx,gy),3)
+            pygame.draw.circle(screen, WHITE,       (gx,gy), 1)
+            # Vòng năng lượng xoay quanh
+            for i in range(4):
+                ang = math.radians(self.walk_timer * 8 + i * 90) if hasattr(self,'walk_timer') else math.radians(i*90)
+                ox = int(math.cos(ang) * 11)
+                oy = int(math.sin(ang) * 11)
+                pygame.draw.circle(screen, (255,100,255),(gx+ox,gy+oy), 2)
