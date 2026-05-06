@@ -4,19 +4,20 @@ Mô-đun quản lý Kẻ Địch (Enemy) và Làn Sóng (Wave) của trò chơi 
 Mô-đun này triển khai hệ thống kẻ địch theo hướng đối tượng với kế thừa và đa hình,
 cùng bảng tra cứu cấu hình tập trung để dễ mở rộng thêm loại kẻ địch mới.
 
+Điểm nhấn thuật toán & đồ họa:
+    - Quản lý kẻ địch bằng Spatial Hashing (Lưới không gian) để tối ưu tính toán sát thương AoE.
+    - Kẻ địch được vẽ chi tiết bằng nhiều lớp đa giác (Polygons) với hiệu ứng bước đi và ngã gục.
+    - Thanh máu (Health Bar) tự động nội suy màu theo phần trăm sinh mệnh còn lại.
+
 Hằng số:
     ENEMY_CONFIG: Bảng Dictionary ánh xạ tên loại kẻ địch sang chỉ số HP,
         tốc độ và phần thưởng vàng. Thêm loại mới chỉ cần bổ sung một dòng.
 
 Lớp:
-    Enemy     : Lớp cơ sở — định nghĩa giao diện chung update() và draw().
-        Tra ENEMY_CONFIG khi khởi tạo để lấy chỉ số theo loại.
-    FastEnemy : Kế thừa Enemy — kẻ địch tốc độ cao, máu thấp, màu xanh lá.
-        Ghi đè update() và draw() để thể hiện đa hình.
-    TankEnemy : Kế thừa Enemy — kẻ địch bọc thép, máu cực cao, tốc độ chậm.
-        Ghi đè update() và draw() để thể hiện đa hình.
-    WaveManager: Quản lý vòng đời làn sóng — sinh kẻ địch theo ENEMY_CONFIG,
-        điều phối di chuyển và thu hồi phần thưởng khi tiêu diệt.
+    Enemy     : Lớp cơ sở — Hiệp sĩ giáp sắt. Định nghĩa giao diện chung update() và draw().
+    FastEnemy : Kế thừa Enemy — Sát thủ áo choàng. Tốc độ cao, máu thấp.
+    TankEnemy : Kế thừa Enemy — Golem khổng lồ. Bọc thép, máu cực cao, tốc độ chậm.
+    WaveManager: Quản lý vòng đời làn sóng — sinh kẻ địch, đưa vào Spatial Hash và xử lý thu hồi phần thưởng.
 """
 import pygame
 import math

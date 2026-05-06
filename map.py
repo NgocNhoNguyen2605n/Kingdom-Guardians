@@ -4,6 +4,11 @@ Mô-đun quản lý Bản Đồ (Map) của trò chơi Kingdom Guardians.
 Mô-đun này định nghĩa cấu trúc dữ liệu lưới (grid) cho ba bản đồ chơi khác
 nhau, thuật toán tìm đường đi (path-finding) và logic vẽ bản đồ lên màn hình.
 
+Điểm nhấn đồ họa (Đã được đại tu):
+    - Render nền cỏ hữu cơ bằng hàng trăm lớp màu (Procedural Generation).
+    - Đường đi uốn lượn tự nhiên không bị giới hạn bởi khối ô vuông.
+    - Cây cỏ đổ bóng 3D, với các hiệu ứng hạt (lá rơi) bay lượn sinh động.
+
 Hằng số:
     ALL_LEVELS : Danh sách 3 lưới bản đồ (LEVEL_1, LEVEL_2, LEVEL_3).
     MAP_NAMES  : Tên hiển thị tương ứng của từng bản đồ.
@@ -12,8 +17,8 @@ Hằng số:
 Lớp:
     Map: Đại diện cho một bản đồ đang hoạt động. Chịu trách nhiệm:
         - Chuyển lưới ô (tile grid) thành danh sách toạ độ pixel (path).
-        - Sinh ngẫu nhiên các vật trang trí (cây bụi) trên ô cỏ.
-        - Vẽ nền, đường đi, lưới chiến thuật và trang trí mỗi frame.
+        - Sinh ngẫu nhiên các vật trang trí (cây bụi, rừng thông) trên ô cỏ.
+        - Vẽ nền cảnh quan đẹp mắt, marker xuất phát/đích và lưới phòng thủ.
         - Kiểm tra ô có thể đặt tháp hay không (is_placeable).
 """
 import pygame
@@ -161,121 +166,145 @@ class Map:
     # ── Trang trí ngẫu nhiên ────────────────────────────────────────────────
     def generate_decorations(self):
         decorations = []
-        for _ in range(35):
+        random.seed(self.level_index) # Để cây và trang trí cố định mỗi lần chơi
+        for _ in range(25): # Giảm số cây để đỡ rối mắt
             c = random.randint(0, COLS-1)
-            r = random.randint(1, ROWS-1)
+            r = random.randint(0, ROWS-1)
             if self.grid[r][c] == 1:
                 x = c * TILE_SIZE + random.randint(5, TILE_SIZE-5)
                 y = r * TILE_SIZE + random.randint(5, TILE_SIZE-5)
-                size = random.randint(8, 20)
-                decorations.append((x, y, size))
+                size = random.randint(10, 18) # Giảm kích thước cây
+                # Đảm bảo không đè quá nhiều lên đường
+                valid = True
+                for p in self.paths:
+                    for px, py in p:
+                        if math.hypot(x - px, y - py) < TILE_SIZE:
+                            valid = False; break
+                    if not valid: break
+                if valid:
+                    decorations.append((x, y, size))
         return decorations
 
-    # ── Vẽ bản đồ ───────────────────────────────────────────────────────────
     def draw(self, screen):
         self.time_ticker += 1
         th = self.theme
         screen.fill(th["grass_l"])
 
-        # Lưới chiến thuật mờ
-        for r in range(ROWS):
-            pygame.draw.line(screen, (0,0,0), (0, r*TILE_SIZE), (WIDTH, r*TILE_SIZE))
-        for c in range(COLS):
-            pygame.draw.line(screen, (0,0,0), (c*TILE_SIZE, 0), (c*TILE_SIZE, HEIGHT))
-        grid_alpha = pygame.Surface((WIDTH, HEIGHT))
-        grid_alpha.set_alpha(12)
-        grid_alpha.fill(WHITE)
-        screen.blit(grid_alpha, (0,0))
+        # 1. Nền Cỏ Bề Mặt (Procedural Grass Texture) - Rất nhẹ nhàng
+        random.seed(self.level_index * 100)
+        s_grass = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        for _ in range(300): # Giảm mạnh số lượng để đơn giản hóa
+            gx = random.randint(0, WIDTH)
+            gy = random.randint(0, HEIGHT)
+            r_val = random.randint(10, 30)
+            col = (th["grass_d"][0], th["grass_d"][1], th["grass_d"][2], 40) # Rất mờ
+            pygame.draw.circle(s_grass, col, (gx, gy), r_val)
+        screen.blit(s_grass, (0, 0))
 
+        # 2. Điểm Đặt Tháp (Chỉ đánh dấu bằng một chút cỏ sẫm màu)
         for r in range(ROWS):
             for c in range(COLS):
-                tile = self.grid[r][c]
-                rect = pygame.Rect(c*TILE_SIZE, r*TILE_SIZE, TILE_SIZE, TILE_SIZE)
-                if tile == 1:
-                    if (r + c) % 2 == 0:
-                        pygame.draw.rect(screen, th["grass_d"], rect)
-                elif tile in (0, 2, 3):
-                    pygame.draw.rect(screen, th["dirt"], rect)
-                    pygame.draw.line(screen, th["dirt_b"], rect.topleft,    rect.topright,    2)
-                    pygame.draw.line(screen, th["dirt_b"], rect.bottomleft, rect.bottomright, 2)
-                    # Cuội sỏi trên đường đất (seeded random)
-                    px = (c*17 + r*7)  % (TILE_SIZE-12) + 6
-                    py = (r*13 + c*11) % (TILE_SIZE-12) + 6
-                    pebble_col = tuple(min(255, v+20) for v in th["dirt"])
-                    pygame.draw.circle(screen, pebble_col, (c*TILE_SIZE+px, r*TILE_SIZE+py), 2)
-                    px2 = (c*23 + r*19) % (TILE_SIZE-12) + 6
-                    py2 = (r*7  + c*17) % (TILE_SIZE-12) + 6
-                    pygame.draw.circle(screen, th["dirt_b"], (c*TILE_SIZE+px2, r*TILE_SIZE+py2), 1)
-
-        # Gợi ý vị trí đặt tháp
-        for r in range(ROWS):
-            for c in range(COLS):
-                if self.grid[r][c] == 1 and r > 0 and c % 2 == 1 and r % 2 == 1:
+                if self.grid[r][c] == 1:
                     cx = c * TILE_SIZE + TILE_SIZE//2
                     cy = r * TILE_SIZE + TILE_SIZE//2
-                    pygame.draw.circle(screen, th["grass_d"], (cx, cy), 12, 3)
+                    pygame.draw.circle(screen, th["grass_d"], (cx, cy), 14)
+                    pygame.draw.circle(screen, th["grass_l"], (cx, cy), 11)
 
-        # Cây trang trí — thân gỗ + 3 tầng lá + hiệu ứng rung / bóng đổ
-        for i, (x, y, size) in enumerate(self.decorations):
-            # Hiệu ứng rung nhẹ
-            sway = math.sin(self.time_ticker * 0.04 + i) * 1.5
-            
+        # 3. Lòng Đường Hữu Cơ (Organic Curved Path)
+        path_color = th["dirt"]
+        border_color = th["dirt_b"]
+        path_width = int(TILE_SIZE * 0.85)
+
+        for p in self.paths:
+            if len(p) > 1:
+                # Viền sậm
+                pygame.draw.lines(screen, border_color, False, p, path_width + 4)
+                for pt in p: pygame.draw.circle(screen, border_color, pt, (path_width + 4)//2)
+                
+                # Lòng đường
+                pygame.draw.lines(screen, path_color, False, p, path_width - 2)
+                for pt in p: pygame.draw.circle(screen, path_color, pt, (path_width - 2)//2)
+                
+                # Một ít sỏi nhỏ li ti dọc viền
+                random.seed(self.level_index * 200)
+                for pt in p:
+                    if random.random() < 0.3:
+                        rx = pt[0] + random.randint(-path_width//2, path_width//2)
+                        ry = pt[1] + random.randint(-path_width//2, path_width//2)
+                        pygame.draw.circle(screen, border_color, (rx, ry), 1)
+
+        # 4. Rừng Cây (Pine Trees)
+        # Sắp xếp cây theo trục Y để vẽ từ trên xuống dưới (tránh đè ngược)
+        sorted_trees = sorted(self.decorations, key=lambda d: d[1])
+        for x, y, size in sorted_trees:
             # Bóng đổ
-            shd = pygame.Surface((size*2+4, size//2+2), pygame.SRCALPHA)
-            pygame.draw.ellipse(shd, (0,0,0,40), (0, 0, size*2+4, size//2+2))
-            screen.blit(shd, (x-size-2 + sway*0.3, y+size//2-1))
+            shd = pygame.Surface((size*3, size*1.5), pygame.SRCALPHA)
+            pygame.draw.ellipse(shd, (0,0,0, 60), (0, 0, size*3, size*1.5))
+            screen.blit(shd, (x - size*1.5, y + size*0.5))
             
-            # Thân cây nâu
-            trunk_w = max(3, size//4)
-            pygame.draw.rect(screen, (90,58,25),
-                             (x - trunk_w//2, y, trunk_w, size//2+2), border_radius=1)
-            pygame.draw.line(screen, (130,85,40),
-                             (x - trunk_w//2+1, y), (x - trunk_w//2+1, y+size//2), 1)
-                             
-            # Tầng lá 3 lớp (dưới → trên, to → nhỏ)
-            pygame.draw.circle(screen, (40,75,15),  (x+2 + sway*0.5, y+2),     size)
-            pygame.draw.circle(screen, BUSH_COLOR,  (x + sway,       y),       size)
-            pygame.draw.circle(screen, (70,115,30), (x-size//4 + sway*1.2, y-size//4), int(size*0.65))
-            pygame.draw.circle(screen, (100,150,45),(x-size//3 + sway*1.6, y-size//3), int(size*0.35))
-            
-            # Highlight lá sáng
-            pygame.draw.circle(screen, th["grass_l"], (x-size//3 + sway*1.6, y-size//3), max(1, size//5))
+            # Thân cây
+            pygame.draw.rect(screen, (60, 35, 15), (x - size//4, y, size//2, size*1.2), border_radius=2)
+            pygame.draw.line(screen, (40, 20, 10), (x + size//4 - 1, y), (x + size//4 - 1, y + size*1.2), 2)
 
-        # Hiệu ứng hạt (lá rơi bay lượn)
+            # Tán thông (3 tầng)
+            t_col_dark = (30, 80, 40)
+            t_col_mid  = (40, 100, 50)
+            t_col_lit  = (55, 130, 65)
+            
+            for layer in range(3):
+                ly = y - size*(0.5 + layer)
+                lw = size * (1.8 - layer*0.3)
+                lh = size * (1.2 + layer*0.1)
+                
+                # Nền tối
+                pygame.draw.polygon(screen, t_col_dark, [(x, ly - lh), (x - lw, ly + lh*0.5), (x + lw, ly + lh*0.5)])
+                # Tán chính
+                pygame.draw.polygon(screen, t_col_mid,  [(x, ly - lh), (x - lw*0.8, ly + lh*0.4), (x + lw*0.8, ly + lh*0.4)])
+                # Tán sáng (Highlight)
+                pygame.draw.polygon(screen, t_col_lit,  [(x, ly - lh), (x - lw*0.3, ly + lh*0.3), (x + lw*0.7, ly + lh*0.3)])
+
+        # 5. Marker Điểm Xuất Phát (Cổng Không Gian)
+        if self.path:
+            sx, sy = self.path[0]
+            # Vòng tròn ma thuật
+            pygame.draw.ellipse(screen, (0, 0, 0, 80), (sx-25, sy-10, 50, 20))
+            for i in range(3, 0, -1):
+                pygame.draw.ellipse(screen, (50, 100, 255), (sx-20*i, sy-8*i, 40*i, 16*i), max(1, 4-i))
+            # Cột đá 2 bên
+            pygame.draw.rect(screen, (80, 80, 90), (sx-25, sy-30, 10, 35), border_radius=2)
+            pygame.draw.rect(screen, (120, 120, 130), (sx-25, sy-30, 5, 35), border_radius=2)
+            pygame.draw.rect(screen, (80, 80, 90), (sx+15, sy-30, 10, 35), border_radius=2)
+            pygame.draw.rect(screen, (120, 120, 130), (sx+15, sy-30, 5, 35), border_radius=2)
+            # Khí xoáy xanh
+            pygame.draw.ellipse(screen, (100, 200, 255, 150), (sx-15, sy-25, 30, 25))
+            pygame.draw.ellipse(screen, (200, 240, 255, 200), (sx-8, sy-20, 16, 15))
+
+        # 6. Marker Điểm Đích (Pháo Đài Vương Quốc)
+        if self.path:
+            ex, ey = self.path[-1]
+            pygame.draw.ellipse(screen, (0, 0, 0, 80), (ex-35, ey-15, 70, 30))
+            # Đế pháo đài đá
+            pygame.draw.rect(screen, (100, 100, 110), (ex-30, ey-30, 60, 30), border_radius=4)
+            pygame.draw.rect(screen, (140, 140, 150), (ex-30, ey-30, 60, 10), border_radius=4)
+            for i in range(5):
+                pygame.draw.rect(screen, (80, 80, 90), (ex-28 + i*12, ey-35, 8, 10), border_radius=2)
+            # Cổng vòm đỏ
+            pygame.draw.rect(screen, (40, 10, 10), (ex-12, ey-15, 24, 25), border_radius=10)
+            pygame.draw.rect(screen, (180, 40, 40), (ex-12, ey-15, 24, 25), 3, border_radius=10)
+            # Cờ xanh vương quốc
+            pygame.draw.line(screen, (200, 180, 50), (ex-20, ey-35), (ex-20, ey-55), 2)
+            pygame.draw.line(screen, (200, 180, 50), (ex+20, ey-35), (ex+20, ey-55), 2)
+            pygame.draw.polygon(screen, (40, 100, 220), [(ex-20, ey-55), (ex-5, ey-50), (ex-20, ey-45)])
+            pygame.draw.polygon(screen, (40, 100, 220), [(ex+20, ey-55), (ex+35, ey-50), (ex+20, ey-45)])
+
+        # Hiệu ứng hạt rơi (leaves)
         for p in self.particles:
-            # Di chuyển hạt x và y
             p[0] += p[3] + math.sin(self.time_ticker * 0.03 + p[1]*0.1) * 0.6
             p[1] += p[2]
-            # Nếu rơi quá màn hình thì vòng lại
             if p[1] > HEIGHT:
                 p[1] = -10
                 p[0] = random.randint(0, WIDTH)
             pygame.draw.rect(screen, p[4], (p[0], p[1], 4, 3), border_radius=1)
-
-        # Marker điểm xuất phát (cổng xanh)
-        if self.path:
-            sx, sy = self.path[0]
-            pygame.draw.rect(screen, (40,80,180),  (sx-14, sy-18, 28, 32), border_radius=4)
-            pygame.draw.rect(screen, (80,140,255), (sx-14, sy-18, 28, 32), 2, border_radius=4)
-            pygame.draw.rect(screen, (20,40,100),  (sx-8,  sy-4,  16, 18), border_radius=3)
-            pygame.draw.rect(screen, (100,180,255),(sx-6,  sy-16,  5, 10), border_radius=2)
-            pygame.draw.rect(screen, (100,180,255),(sx+1,  sy-16,  5, 10), border_radius=2)
-            s_txt = pygame.Surface((28, 8), pygame.SRCALPHA)
-            pygame.draw.rect(s_txt, (140,200,255,180), (0,0,28,8), border_radius=2)
-            screen.blit(s_txt, (sx-14, sy-24))
-
-        # Marker điểm đích (pháo đài đỏ)
-        if self.path:
-            ex, ey = self.path[-1]
-            pygame.draw.rect(screen, (140,45,45), (ex-16, ey-22, 32, 36), border_radius=4)
-            pygame.draw.rect(screen, (200,70,70), (ex-16, ey-22, 32, 36), 2, border_radius=4)
-            for i in range(4):                                      # Merlons (lỗ châu mai)
-                mx = ex-14 + i*9
-                pygame.draw.rect(screen, (160,55,55), (mx, ey-28, 7, 8), border_radius=1)
-            pygame.draw.rect(screen, (80,20,20),  (ex-8, ey, 16, 14), border_radius=2)
-            pygame.draw.rect(screen, (200,60,60), (ex-8, ey, 16, 14), 1, border_radius=2)
-            pygame.draw.line(screen, (220,80,80), (ex-2, ey-20),(ex-2, ey-12), 2)
-            pygame.draw.polygon(screen,(220,40,40),[(ex-2,ey-28),(ex-2,ey-20),(ex+6,ey-24)])
 
     # ── Kiểm tra có thể đặt tháp ────────────────────────────────────────────
     def is_placeable(self, x, y):

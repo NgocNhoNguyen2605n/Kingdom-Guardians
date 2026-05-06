@@ -4,16 +4,20 @@ Mô-đun giao diện người dùng (UI) của trò chơi Kingdom Guardians.
 Mô-đun này tập trung toàn bộ logic hiển thị giao diện, tách biệt hoàn toàn
 với logic gameplay để đảm bảo nguyên tắc Single Responsibility.
 
+Điểm nhấn đồ họa (Đã được đại tu):
+    - Toàn bộ giao diện áp dụng phong cách gỗ sồi (Wood grain) nẹp viền Vàng hoàng gia.
+    - Bảng thông tin tháp có đóng đinh tán (Rivets), thiết kế hộp chìm 3D đẹp mắt.
+    - Card chọn bản đồ có hiệu ứng nhịp tim (Pulse) mượt mà khi hover chuột.
+
 Lớp:
     UI: Quản lý và vẽ mọi thành phần giao diện. Gồm các phương thức:
-        draw_top_bar()         : Thanh thông tin trên cùng — vàng, mạng, wave, tên map.
+        draw_top_bar()         : Thanh thông tin trên cùng (gỗ/vàng) — vàng, mạng, wave.
         draw_menu()            : Màn hình tiêu đề khởi động.
-        draw_map_select()      : Màn hình chọn bản đồ với 3 card thumbnail có hiệu ứng
-            nhịp (pulse) khi hover, cho phép click hoặc dùng phím mũi tên để chọn.
-        draw_placement_effect(): Vẽ hiệu ứng vòng tròn lan rộng (ripple) khi đặt tháp.
+        draw_map_select()      : Màn hình chọn bản đồ với 3 card thumbnail có hiệu ứng pulse.
+        draw_tower_selection() : Thanh chọn tháp gỗ nổi ở mép dưới màn hình.
+        draw_tower_popup()     : Bảng nâng cấp/bán/chỉnh mục tiêu hiện trên đầu tháp.
+        draw_placement_effect(): Vẽ vòng tròn định vị khi chuẩn bị đặt tháp.
         draw_pause()           : Overlay bán trong suốt khi tạm dừng.
-        draw_game_over()       : Màn hình thua cuộc.
-        draw_victory()         : Màn hình chiến thắng.
 """
 import pygame
 from settings import *
@@ -39,8 +43,14 @@ class UI:
     def draw_top_bar(self, screen, gold, lives, wave, map_name=""):
         bar_height = 40
         panel_rect = pygame.Rect(0, 0, WIDTH, bar_height)
-        pygame.draw.rect(screen, UI_PANEL_BG, panel_rect)
-        pygame.draw.rect(screen, UI_PANEL_BORDER, panel_rect, 3)
+        # Nền gỗ đậm
+        pygame.draw.rect(screen, (40, 25, 15), panel_rect)
+        # Vân gỗ ngang dọc
+        for i in range(10, WIDTH, 40):
+            pygame.draw.line(screen, (60, 40, 25), (i, 4), (i, bar_height-4), 2)
+        # Viền vàng hoàng gia
+        pygame.draw.rect(screen, (200, 160, 50), panel_rect, 3)
+        pygame.draw.line(screen, (255, 220, 100), (0, 2), (WIDTH, 2), 1)
 
         # Tên bản đồ (Góc trái)
         title_text = self.font.render(map_name.upper() if map_name else "KINGDOM GUARDIANS", True, WHITE)
@@ -272,8 +282,13 @@ class UI:
         start_y = HEIGHT - bar_h - 10
         
         rect = pygame.Rect(start_x, start_y, bar_w, bar_h)
-        pygame.draw.rect(screen, UI_PANEL_BG, rect, border_radius=8)
-        pygame.draw.rect(screen, UI_PANEL_BORDER, rect, 3, border_radius=8)
+        # Nền gỗ cho bảng chọn tháp
+        pygame.draw.rect(screen, (50, 35, 20), rect, border_radius=8)
+        for i in range(10, bar_w-10, 25):
+            pygame.draw.line(screen, (30, 20, 10), (start_x + i, start_y + 4), (start_x + i, start_y + bar_h - 4), 2)
+        # Viền vàng bọc quanh
+        pygame.draw.rect(screen, (200, 160, 50), rect, 4, border_radius=8)
+        pygame.draw.rect(screen, (255, 220, 100), rect, 1, border_radius=8)
         
         # Hướng dẫn thao tác đặt tháp được đưa xuống đây để thanh trên cùng gọn gàng
         inst_txt = self.small_font.render("1/2: Select Tower   |   Right-Click: Cancel / Menu", True, (220, 220, 220))
@@ -370,22 +385,33 @@ class UI:
         py = tower.y - 40
         popup_w = 140
         return pygame.Rect(px + 5, py + 5, popup_w - 10, 28), \
-               pygame.Rect(px + 5, py + 37, popup_w - 10, 28)
+               pygame.Rect(px + 5, py + 37, popup_w - 10, 28), \
+               pygame.Rect(px + 5, py + 69, popup_w - 10, 28)
 
     def draw_tower_popup(self, screen, tower):
         px = tower.x + 20
         py = tower.y - 40
         popup_w = 140
-        popup_h = 70
+        popup_h = 102
         rect = pygame.Rect(px, py, popup_w, popup_h)
-        pygame.draw.rect(screen, (30, 30, 40), rect, border_radius=5)
-        pygame.draw.rect(screen, (100, 100, 150), rect, 2, border_radius=5)
+        # Nền gỗ menu popup
+        pygame.draw.rect(screen, (60, 40, 25), rect, border_radius=6)
+        # Viền vàng đồng
+        pygame.draw.rect(screen, (200, 160, 50), rect, 3, border_radius=6)
+        # Đinh tán 4 góc
+        for dx, dy in [(6,6), (popup_w-6,6), (6,popup_h-6), (popup_w-6,popup_h-6)]:
+            pygame.draw.circle(screen, (220, 180, 60), (px+dx, py+dy), 4)
+            pygame.draw.circle(screen, (100, 80, 20), (px+dx, py+dy), 4, 1)
         
-        up_rect, sell_rect = self.get_tower_popup_rects(tower)
+        up_rect, sell_rect, target_rect = self.get_tower_popup_rects(tower)
         
         # Upgrade button
-        pygame.draw.rect(screen, (50, 150, 50), up_rect, border_radius=3)
-        up_text = self.small_font.render(f"Up ({tower.upgrade_cost} Gold)", True, WHITE)
+        if tower.level >= 2:
+            pygame.draw.rect(screen, (80, 80, 80), up_rect, border_radius=3)
+            up_text = self.small_font.render("Max Level", True, (180, 180, 180))
+        else:
+            pygame.draw.rect(screen, (50, 150, 50), up_rect, border_radius=3)
+            up_text = self.small_font.render(f"Up ({tower.upgrade_cost} Gold)", True, WHITE)
         screen.blit(up_text, (up_rect.x + (up_rect.w - up_text.get_width())//2, up_rect.y + 5))
         
         # Sell button
@@ -393,4 +419,9 @@ class UI:
         pygame.draw.rect(screen, (200, 50, 50), sell_rect, border_radius=3)
         sell_text = self.small_font.render(f"Sell (+{refund} Gold)", True, WHITE)
         screen.blit(sell_text, (sell_rect.x + (sell_rect.w - sell_text.get_width())//2, sell_rect.y + 5))
+
+        # Target Mode button
+        pygame.draw.rect(screen, (50, 100, 200), target_rect, border_radius=3)
+        target_text = self.small_font.render(f"Target: {tower.target_mode}", True, WHITE)
+        screen.blit(target_text, (target_rect.x + (target_rect.w - target_text.get_width())//2, target_rect.y + 5))
 

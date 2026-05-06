@@ -4,14 +4,17 @@ Mô-đun quản lý Đạn Bắn (Bullet) của trò chơi Kingdom Guardians.
 Mô-đun này định nghĩa lớp Bullet đảm nhiệm toàn bộ vòng đời của một viên đạn:
 bay về phía mục tiêu, va chạm, gây sát thương và hiển thị hiệu ứng hình ảnh.
 
+Điểm nhấn thuật toán & đồ họa:
+    - Quét diện nổ (AoE) dùng Spatial Hashing (tra cứu từ WaveManager) siêu tốc O(1) trung bình.
+    - Hiệu ứng đạn cung xoay góc theo ma trận, đạn phép có vòng hào quang (Halo), 
+      và hiệu ứng nổ lan rộng dần khi chạm mục tiêu (Ripple effect).
+
 Lớp:
     Bullet: Viên đạn bay từ tháp đến mục tiêu. Hỗ trợ ba loại:
         - "arrow" : Tên cung — vẽ thân tên và mũi thép xoay theo hướng bay.
-        - "magic"  : Phép thuật thường — quả cầu xanh/tím phát sáng.
-        - "aoe"    : Nổ diện (Area of Effect) — quả cầu tím lớn; khi chạm mục tiêu
-            thực thi giải thuật quét diện O(n): duyệt toàn bộ enemies_ref, tính
-            khoảng cách Euclid và gây sát thương cho mọi kẻ địch trong aoe_radius.
-            Sau đó phát hiệu ứng vòng nổ lan rộng trong 18 frame.
+        - "magic" : Phép thuật thường — quả cầu xanh/tím phát sáng (Glow).
+        - "aoe"   : Nổ diện — Gọi sóng nổ, lọc quái trong bán kính qua Spatial Hash,
+            trừ máu tất cả và bung hiệu ứng vòng tròn tử thần trong 18 frame.
 """
 import pygame
 import math

@@ -5,6 +5,11 @@ Mô-đun này khởi tạo môi trường Pygame, thiết lập các biến toà
 và quản lý Vòng lặp trò chơi (Main Game Loop) cùng hệ thống trạng thái
 như MENU, MAP_SELECT, PLAYING, PAUSED, GAMEOVER, VICTORY.
 
+Điểm nhấn (Đã được nâng cấp):
+    - Tối ưu hóa render bằng dirty_rects giúp tăng FPS đáng kể.
+    - Render bản đồ tĩnh (Static Background Cache) tránh tính toán lại nền mỗi frame.
+    - Giao diện và các nút điều khiển được quản lý tách biệt qua ui.py.
+
 Hàm xử lý:
     place_tower(x, y): Kiểm tra tính hợp lệ về mặt không gian và tài nguyên
         để đặt một tháp mới vào danh sách phòng thủ.
@@ -201,7 +206,7 @@ while running:
                             popup_tower = None
                             continue
                         elif len(action_rects) == 3 and action_rects[2].collidepoint(mx, my):
-                            modes = ["First", "Strongest", "Weakest"]
+                            modes = ["First", "Nearest", "Strongest", "Weakest"]
                             idx = modes.index(popup_tower.target_mode)
                             popup_tower.target_mode = modes[(idx + 1) % len(modes)]
                             continue
@@ -353,7 +358,7 @@ while running:
         
         if popup_tower:
             ui.draw_tower_popup(screen, popup_tower)
-            dirty_rects.append(pygame.Rect(popup_tower.x, popup_tower.y - 45, 160, 110))
+            dirty_rects.append(pygame.Rect(popup_tower.x, popup_tower.y - 45, 160, 140))
             
         if not popup_tower and selected_build_type is not None:
             mx, my = pygame.mouse.get_pos()
