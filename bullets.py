@@ -19,6 +19,7 @@ Lớp:
 import pygame
 import math
 from settings import *
+from audio import play_sound
 
 class Bullet:
     """
@@ -42,6 +43,7 @@ class Bullet:
         self.explode_timer = 0           # Đếm ngược frame hiệu ứng nổ
         self.explode_x = 0              # Toạ độ tâm nổ
         self.explode_y = 0
+        self.trail = []   # Vết đuôi (trail) của mũi tên
 
     def update(self):
         # Nếu đang trong pha nổ, đếm ngược rồi huỷ đạn
@@ -77,31 +79,57 @@ class Bullet:
                                 
                 self.exploding = True
                 self.explode_timer = 18
+                play_sound("hit")
             else:
                 # Đạn thường: chỉ trừ máu mục tiêu
                 self.target.hp -= self.damage
                 self.alive = False
+                play_sound("hit")
         else:
+            # Lưu trail cho mũi tên / magic (giữ tối đa 6 điểm)
+            self.trail.append((self.x, self.y))
+            if len(self.trail) > 6:
+                self.trail.pop(0)
             self.x += (dx / dist) * self.speed
             self.y += (dy / dist) * self.speed
 
     def draw(self, screen):
         if self.exploding:
             progress = 1.0 - (self.explode_timer / 18)
-            radius   = max(1, int(self.aoe_radius * progress))
-            alpha    = int(220 * (self.explode_timer / 18))
-            # Vòng nổ ngoài
-            s = pygame.Surface((radius*2+10, radius*2+10), pygame.SRCALPHA)
-            cx, cy = radius+5, radius+5
-            pygame.draw.circle(s, (255,80,255, max(0,alpha//4)), (cx,cy), radius)
-            pygame.draw.circle(s, (200,60,255, alpha),           (cx,cy), radius,   5)
-            pygame.draw.circle(s, (255,180,255,alpha),           (cx,cy), radius//2, 3)
-            if radius > 10:
-                pygame.draw.circle(s, (255,255,255,alpha//2),   (cx,cy), radius//4, 2)
-            screen.blit(s, (int(self.explode_x)-radius-5, int(self.explode_y)-radius-5))
+            t_frac   = self.explode_timer / 18   # 1.0 → 0.0
+            # Ring 1: Trắng rực lõi (nhỏ, fade nhanh)
+            r1 = max(1, int(self.aoe_radius * 0.35 * progress))
+            a1 = max(0, int(255 * t_frac))
+            if r1 > 0:
+                s1 = pygame.Surface((r1*2+2, r1*2+2), pygame.SRCALPHA)
+                pygame.draw.circle(s1, (255, 255, 255, a1), (r1+1, r1+1), r1)
+                screen.blit(s1, (int(self.explode_x)-r1-1, int(self.explode_y)-r1-1))
+            # Ring 2: Cam nắng (giữa)
+            r2 = max(1, int(self.aoe_radius * 0.65 * progress))
+            a2 = max(0, int(220 * t_frac * 0.85))
+            if r2 > 0:
+                s2 = pygame.Surface((r2*2+2, r2*2+2), pygame.SRCALPHA)
+                pygame.draw.circle(s2, (255, 140, 30, a2), (r2+1, r2+1), r2, max(1, r2//4))
+                screen.blit(s2, (int(self.explode_x)-r2-1, int(self.explode_y)-r2-1))
+            # Ring 3: Đỏ/Tím ngoài (viền lan rộng)
+            radius = max(1, int(self.aoe_radius * progress))
+            alpha  = max(0, int(180 * t_frac))
+            if radius > 0:
+                s3 = pygame.Surface((radius*2+10, radius*2+10), pygame.SRCALPHA)
+                cx, cy = radius+5, radius+5
+                pygame.draw.circle(s3, (200, 60, 255, alpha//4), (cx,cy), radius)
+                pygame.draw.circle(s3, (200, 60, 255, alpha),    (cx,cy), radius, max(2, radius//6))
+                screen.blit(s3, (int(self.explode_x)-radius-5, int(self.explode_y)-radius-5))
             return
 
         if self.b_type == "arrow":
+            # Vẽ trail trước
+            for i, (tx, ty) in enumerate(self.trail):
+                trail_alpha = int(120 * (i / max(1, len(self.trail))))
+                trail_r = max(1, i // 2)
+                ts = pygame.Surface((trail_r*2+2, trail_r*2+2), pygame.SRCALPHA)
+                pygame.draw.circle(ts, (200, 160, 80, trail_alpha), (trail_r+1, trail_r+1), trail_r)
+                screen.blit(ts, (int(tx)-trail_r-1, int(ty)-trail_r-1))
             length = 12
             rad = math.radians(-self.angle)
             cos_a, sin_a = math.cos(rad), math.sin(rad)

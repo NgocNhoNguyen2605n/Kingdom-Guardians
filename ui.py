@@ -39,6 +39,20 @@ class UI:
         self.state_timer = 0
         self.particles = []
 
+        # Tải hình ảnh UI
+        self.images = {}
+        import os
+        img_dir = "assets/images"
+        if os.path.exists(img_dir):
+            if os.path.exists(os.path.join(img_dir, "menu_bg.png")):
+                img = pygame.image.load(os.path.join(img_dir, "menu_bg.png")).convert_alpha()
+                self.images["menu_bg"] = pygame.transform.scale(img, (WIDTH, HEIGHT))
+            for i in range(1, 4):
+                name = f"map{i}_full.png"
+                if os.path.exists(os.path.join(img_dir, name)):
+                    img = pygame.image.load(os.path.join(img_dir, name)).convert_alpha()
+                    self.images[f"map{i}"] = pygame.transform.scale(img, (180, 130))
+
     # ── Top bar trong trận ───────────────────────────────────────────────────
     def draw_top_bar(self, screen, gold, lives, wave, map_name=""):
         bar_height = 40
@@ -78,21 +92,55 @@ class UI:
         screen.blit(inst, (WIDTH - inst.get_width() - 15, 12))
 
     # ── Màn hình chính ────────────────────────────────────────────────────────
-    def draw_menu(self, screen):
-        screen.fill(GRASS_DARK)
-        pygame.draw.rect(screen, (100, 180, 250), (0, 0, WIDTH, HEIGHT//2))
-        pygame.draw.circle(screen, GOLD_COLOR, (WIDTH-100, 100), 60)
+    def draw_menu(self, screen, tick=None):
+        if tick is None:
+            tick = pygame.time.get_ticks()
+            
+        import math, random
+        if "menu_bg" in self.images:
+            screen.blit(self.images["menu_bg"], (0, 0))
+        else:
+            screen.fill((100, 180, 250))
 
-        shadow = self.big_font.render("KINGDOM GUARDIANS", True, BLACK)
-        title  = self.big_font.render("KINGDOM GUARDIANS", True, GOLD_COLOR)
+        # Hạt đom đóm
+        if not hasattr(self, 'menu_particles') or len(self.menu_particles) < 30:
+            self.menu_particles = [[random.randint(0, WIDTH), random.randint(HEIGHT//2, HEIGHT), 
+                                    random.uniform(-1, 1), random.uniform(-1, 1)] for _ in range(30)]
+        for p in self.menu_particles:
+            p[0] += p[2] + math.sin(tick*0.001 + p[1])*0.5
+            p[1] += p[3]
+            if p[0] < 0: p[0] = WIDTH
+            if p[0] > WIDTH: p[0] = 0
+            if p[1] < HEIGHT//2: p[1] = HEIGHT
+            if p[1] > HEIGHT: p[1] = HEIGHT//2
+            a = int(155 + 100 * math.sin(tick*0.005 + p[0]))
+            pygame.draw.circle(screen, (200, 255, 100, max(0, min(255, a))), (int(p[0]), int(p[1])), 2)
+
+        # Logo có viền dày và đổ bóng
+        title_txt = "KINGDOM GUARDIANS"
+        title = self.big_font.render(title_txt, True, GOLD_COLOR)
+        bob_y = math.sin(tick * 0.003) * 10
         tx = WIDTH//2 - title.get_width()//2
-        screen.blit(shadow, (tx+3, HEIGHT//2 - 67))
-        screen.blit(title,  (tx,   HEIGHT//2 - 70))
+        ty = HEIGHT//2 - 100 + bob_y
+        
+        # Outline 8 hướng
+        for ox, oy in [(-2,0),(2,0),(0,-2),(0,2),(-2,-2),(2,-2),(-2,2),(2,2)]:
+            screen.blit(self.big_font.render(title_txt, True, (40, 20, 10)), (tx+ox, ty+oy))
+        # Bóng đổ sâu
+        screen.blit(self.big_font.render(title_txt, True, (0, 0, 0)), (tx+4, ty+8))
+        screen.blit(title, (tx, ty))
 
-        sub = self.font.render("Press SPACE to Select Map", True, WHITE)
-        pygame.draw.rect(screen, (0,0,0,180),
-                         (WIDTH//2 - sub.get_width()//2 - 10, HEIGHT//2+15, sub.get_width()+20, 32))
-        screen.blit(sub, (WIDTH//2 - sub.get_width()//2, HEIGHT//2+18))
+        # Nút Start nhấp nháy
+        sub_txt = "Press SPACE to Select Map"
+        sub = self.font.render(sub_txt, True, WHITE)
+        alpha = int(180 + 75 * math.sin(tick * 0.005))
+        s_rect = pygame.Rect(WIDTH//2 - sub.get_width()//2 - 20, HEIGHT//2 + 40, sub.get_width() + 40, 46)
+        
+        s = pygame.Surface((s_rect.w, s_rect.h), pygame.SRCALPHA)
+        pygame.draw.rect(s, (0, 0, 0, 150), (0, 0, s_rect.w, s_rect.h), border_radius=8)
+        pygame.draw.rect(s, (255, 215, 0, alpha), (0, 0, s_rect.w, s_rect.h), 2, border_radius=8)
+        screen.blit(s, s_rect.topleft)
+        screen.blit(sub, (WIDTH//2 - sub.get_width()//2, HEIGHT//2 + 50))
 
     # ── Màn hình chọn bản đồ ────────────────────────────────────────────────
     def draw_map_select(self, screen, selected_index, tick):
@@ -135,52 +183,70 @@ class UI:
             border_col = GOLD_COLOR if is_sel else (80, 80, 100)
             border_w   = 3 if is_sel else 2
 
-            # Nền card
-            card_rect = pygame.Rect(cx - pulse, card_y - pulse,
-                                    card_w + pulse*2, card_h + pulse*2)
-            pygame.draw.rect(screen, (35, 32, 50), card_rect, border_radius=12)
-            pygame.draw.rect(screen, border_col,   card_rect, border_w, border_radius=12)
+            # Nền card (Gỗ sồi sẫm)
+            card_rect = pygame.Rect(cx - pulse, card_y - pulse, card_w + pulse*2, card_h + pulse*2)
+            pygame.draw.rect(screen, (50, 35, 20), card_rect, border_radius=12)
+            # Vân gỗ nhẹ
+            pygame.draw.rect(screen, (60, 45, 25), (card_rect.x+10, card_rect.y+10, card_rect.w-20, card_rect.h-20), border_radius=8)
+            # Giấy da bên trong
+            pygame.draw.rect(screen, (230, 215, 180), (card_rect.x+15, card_rect.y+150, card_rect.w-30, card_rect.h-165), border_radius=6)
+            # Đinh tán (Rivets) 4 góc
+            for rx, ry in [(card_rect.x+6, card_rect.y+6), (card_rect.right-6, card_rect.y+6), 
+                           (card_rect.x+6, card_rect.bottom-6), (card_rect.right-6, card_rect.bottom-6)]:
+                pygame.draw.circle(screen, (30,30,30), (rx, ry), 4)
+                pygame.draw.circle(screen, (100,100,100), (rx-1, ry-1), 2)
+            # Viền vàng nếu chọn
+            pygame.draw.rect(screen, border_col, card_rect, border_w, border_radius=12)
 
             # Thumbnail mini-map
-            th      = themes[i]
             thumb_w = card_w - 20
             thumb_h = 130
             thumb_x = cx - pulse + 10
             thumb_y = card_y - pulse + 15
-            pygame.draw.rect(screen, th["grass_l"],
-                             (thumb_x, thumb_y, thumb_w, thumb_h), border_radius=6)
-
-            # Vẽ path mini (lấy từ LEVEL grid)
-            from map import ALL_LEVELS
-            grid   = ALL_LEVELS[i]
-            cell_w = thumb_w / 20
-            cell_h = thumb_h / 15
-            for r in range(15):
-                for c in range(20):
-                    t = grid[r][c]
-                    rx = int(thumb_x + c * cell_w)
-                    ry = int(thumb_y + r * cell_h)
-                    rw = max(1, int(cell_w))
-                    rh = max(1, int(cell_h))
-                    if t in (0, 2, 3):
-                        pygame.draw.rect(screen, th["dirt"], (rx, ry, rw, rh))
-                    if t == 2:
-                        pygame.draw.circle(screen, GREEN, (rx+rw//2, ry+rh//2), 4)
-                    if t == 3:
-                        pygame.draw.circle(screen, RED,   (rx+rw//2, ry+rh//2), 4)
+            
+            img_key = f"map{i+1}"
+            if img_key in self.images:
+                # Nếu ảnh tồn tại, blit ảnh (ảnh đã scale 180x130 trong init)
+                # Dùng một surface tạm có border radius để mask ảnh nếu cần, hoặc đơn giản vẽ border lên trên
+                screen.blit(self.images[img_key], (thumb_x, thumb_y))
+                pygame.draw.rect(screen, (30, 20, 10), (thumb_x, thumb_y, thumb_w, thumb_h), 3, border_radius=6)
+            else:
+                # Fallback: vẽ grid thô như cũ nếu không có ảnh
+                th      = themes[i]
+                pygame.draw.rect(screen, th["grass_l"],
+                                 (thumb_x, thumb_y, thumb_w, thumb_h), border_radius=6)
+                from map import ALL_LEVELS
+                grid   = ALL_LEVELS[i]
+                grid_h = len(grid)
+                grid_w = len(grid[0])
+                cell_w = thumb_w / grid_w
+                cell_h = thumb_h / grid_h
+                for r in range(grid_h):
+                    for c in range(grid_w):
+                        t = grid[r][c]
+                        rx = int(thumb_x + c * cell_w)
+                        ry = int(thumb_y + r * cell_h)
+                        rw = max(1, int(cell_w))
+                        rh = max(1, int(cell_h))
+                        if t in (0, 2, 3):
+                            pygame.draw.rect(screen, th["dirt"], (rx, ry, rw, rh))
+                        if t == 2:
+                            pygame.draw.circle(screen, GREEN, (rx+rw//2, ry+rh//2), 4)
+                        if t == 3:
+                            pygame.draw.circle(screen, RED,   (rx+rw//2, ry+rh//2), 4)
 
             # Tên bản đồ
-            name_surf = self.title_font.render(MAP_NAMES[i], True, WHITE)
+            name_surf = self.title_font.render(MAP_NAMES[i], True, (40, 20, 10))
             ny = card_y - pulse + thumb_h + 22
             screen.blit(name_surf, (cx - pulse + (card_w - name_surf.get_width())//2, ny))
 
-            # Mô tả
+            # Mô tả (Chữ tối trên giấy da)
             for j, line in enumerate(descs[i]):
-                ls = self.small_font.render(line, True, (190, 190, 200))
+                ls = self.small_font.render(line, True, (80, 50, 30))
                 screen.blit(ls, (cx - pulse + (card_w - ls.get_width())//2, ny + 34 + j*20))
 
             # Số map
-            num_surf = self.font.render(f"MAP {i+1}", True, border_col)
+            num_surf = self.font.render(f"MAP {i+1}", True, (150, 40, 20) if is_sel else (100, 80, 60))
             screen.blit(num_surf, (cx - pulse + (card_w - num_surf.get_width())//2,
                                    card_y - pulse + card_h - 26))
 
@@ -302,7 +368,7 @@ class UI:
         if selected_type == 'archer':
             pygame.draw.rect(screen, GOLD_COLOR, archer_rect, 2, border_radius=5)
         t1 = self.small_font.render("Archer", True, WHITE)
-        t1c = self.small_font.render("50 Gold", True, GOLD_COLOR)
+        t1c = self.small_font.render("65 Gold", True, GOLD_COLOR)
         screen.blit(t1, (archer_rect.x + 30 - t1.get_width()//2, archer_rect.y + 5))
         screen.blit(t1c, (archer_rect.x + 30 - t1c.get_width()//2, archer_rect.y + 25))
         
@@ -312,7 +378,7 @@ class UI:
         if selected_type == 'magic':
             pygame.draw.rect(screen, GOLD_COLOR, magic_rect, 2, border_radius=5)
         t2 = self.small_font.render("Magic", True, WHITE)
-        t2c = self.small_font.render("80 Gold", True, GOLD_COLOR)
+        t2c = self.small_font.render("110 Gold", True, GOLD_COLOR)
         screen.blit(t2, (magic_rect.x + 30 - t2.get_width()//2, magic_rect.y + 5))
         screen.blit(t2c, (magic_rect.x + 30 - t2c.get_width()//2, magic_rect.y + 25))
 
@@ -383,16 +449,16 @@ class UI:
     def get_tower_popup_rects(self, tower):
         px = tower.x + 20
         py = tower.y - 40
-        popup_w = 140
-        return pygame.Rect(px + 5, py + 5, popup_w - 10, 28), \
-               pygame.Rect(px + 5, py + 37, popup_w - 10, 28), \
-               pygame.Rect(px + 5, py + 69, popup_w - 10, 28)
+        popup_w = 160
+        return pygame.Rect(px + 5, py + 38, popup_w - 10, 26), \
+               pygame.Rect(px + 5, py + 68, popup_w - 10, 26), \
+               pygame.Rect(px + 5, py + 98, popup_w - 10, 26)
 
     def draw_tower_popup(self, screen, tower):
         px = tower.x + 20
         py = tower.y - 40
-        popup_w = 140
-        popup_h = 102
+        popup_w = 160
+        popup_h = 130
         rect = pygame.Rect(px, py, popup_w, popup_h)
         # Nền gỗ menu popup
         pygame.draw.rect(screen, (60, 40, 25), rect, border_radius=6)
@@ -402,6 +468,32 @@ class UI:
         for dx, dy in [(6,6), (popup_w-6,6), (6,popup_h-6), (popup_w-6,popup_h-6)]:
             pygame.draw.circle(screen, (220, 180, 60), (px+dx, py+dy), 4)
             pygame.draw.circle(screen, (100, 80, 20), (px+dx, py+dy), 4, 1)
+        
+        # Preview chỉ số
+        if tower.level < 2:
+            new_dmg = tower.damage + (25 if tower.__class__.__name__ == "Tower" else 20)
+            new_rng = tower.range + (40 if tower.__class__.__name__ == "Tower" else 20)
+            
+            # Icon Sword
+            pygame.draw.line(screen, (200, 200, 200), (px + 10, py + 16), (px + 16, py + 10), 2)
+            pygame.draw.line(screen, GOLD_COLOR, (px + 10, py + 14), (px + 12, py + 16), 2)
+            
+            t_dmg1 = self.small_font.render(f" {tower.damage}", True, WHITE)
+            t_dmg2 = self.small_font.render(f" -> {new_dmg}", True, GREEN)
+            screen.blit(t_dmg1, (px + 20, py + 5))
+            screen.blit(t_dmg2, (px + 20 + t_dmg1.get_width(), py + 5))
+            
+            # Icon Target
+            pygame.draw.circle(screen, WHITE, (px + 13, py + 27), 4, 1)
+            pygame.draw.circle(screen, RED, (px + 13, py + 27), 1)
+            
+            t_rng1 = self.small_font.render(f" {tower.range}", True, WHITE)
+            t_rng2 = self.small_font.render(f" -> {new_rng}", True, GREEN)
+            screen.blit(t_rng1, (px + 20, py + 20))
+            screen.blit(t_rng2, (px + 20 + t_rng1.get_width(), py + 20))
+        else:
+            t_max = self.small_font.render("MAX LEVEL", True, GOLD_COLOR)
+            screen.blit(t_max, (px + (popup_w - t_max.get_width())//2, py + 12))
         
         up_rect, sell_rect, target_rect = self.get_tower_popup_rects(tower)
         

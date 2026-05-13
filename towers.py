@@ -22,6 +22,7 @@ import math
 import heapq
 from settings import *
 from bullets import Bullet
+from audio import play_sound
 
 
 # ── i. Lớp cơ sở Tower ───────────────────────────────────────────────────────
@@ -39,11 +40,13 @@ class Tower:
         self.cooldown     = 40
         self.cooldown_timer = 0
         self.level        = 1
-        self.upgrade_cost = 60
-        self.total_gold_spent = 50
+        self.upgrade_cost = 80
+        self.total_gold_spent = 65
         self.angle        = 0
         self.shoot_timer  = 0
         self.flash_duration = 5
+        self.lean_angle   = 0.0
+        self.lean_target  = 0.0
         self.target_mode  = "First"  # First, Strongest, Weakest
 
     def _find_target(self, enemies):
@@ -78,109 +81,192 @@ class Tower:
         if target:
             dx, dy = target.x - self.x, target.y - self.y
             self.angle = math.degrees(math.atan2(-dy, dx)) - 90
+            self.lean_target = 8.0   # Ngả về phía trước khi có địch
             if self.cooldown_timer <= 0:
                 b_type = "arrow" if self.level == 1 else "magic"
                 spd    = 8      if self.level == 1 else 6
                 bullets.append(Bullet(self.x, self.y, target, self.damage, spd, b_type))
                 self.cooldown_timer = self.cooldown
                 self.shoot_timer = self.flash_duration
+                play_sound("shoot_arrow")
+        else:
+            self.lean_target = 0.0   # Đứng thẳng khi rảnh
+        # Smooth lean lerp
+        self.lean_angle += (self.lean_target - self.lean_angle) * 0.15
 
     def draw(self, screen):
-        """Tháp Gỗ: Nền đá, cột gỗ, chòi canh bạt bọc thép."""
+        """Tháp Cung Thủ — Stardew Valley 3-tone wood grain + Hades metallic specular."""
         x, y = self.x, self.y
-        
-        # Bóng đổ lớn
-        pygame.draw.ellipse(screen, (0, 0, 0, 70), (x - 28, y + 2, 56, 24))
-        
-        # Đế đá thô
-        pygame.draw.ellipse(screen, (90, 95, 100), (x - 24, y - 5, 48, 20))
-        pygame.draw.ellipse(screen, (130, 135, 140), (x - 24, y - 12, 48, 20))
-        pygame.draw.ellipse(screen, (100, 105, 110), (x - 24, y - 12, 48, 20), 2)
-        # Rêu trên đá
-        pygame.draw.ellipse(screen, (60, 90, 40), (x - 22, y - 8, 20, 10))
-        
-        # Cột gỗ phía sau
-        pygame.draw.rect(screen, (50, 30, 15), (x - 18, y - 35, 6, 28), border_radius=1)
-        pygame.draw.rect(screen, (50, 30, 15), (x + 12, y - 35, 6, 28), border_radius=1)
-        
-        # Sàn gỗ chòi canh
-        pygame.draw.ellipse(screen, (70, 40, 20), (x - 26, y - 40, 52, 16))
-        pygame.draw.ellipse(screen, (110, 70, 30), (x - 26, y - 44, 52, 16))
-        pygame.draw.ellipse(screen, (80, 50, 20), (x - 26, y - 44, 52, 16), 2)
-        # Tấm ván gỗ (wood planks)
-        for i in range(-16, 20, 8):
-            pygame.draw.line(screen, (90, 55, 25), (x + i, y - 42), (x + i, y - 30), 1)
+        import random as _rng
 
-        # Cột gỗ phía trước (đè lên sàn gỗ một chút)
-        pygame.draw.rect(screen, (80, 50, 25), (x - 22, y - 35, 8, 30), border_radius=1)
-        pygame.draw.rect(screen, (80, 50, 25), (x + 14, y - 35, 8, 30), border_radius=1)
-        pygame.draw.line(screen, (50, 30, 15), (x - 22, y - 35), (x - 22, y - 5), 1)
-        pygame.draw.line(screen, (50, 30, 15), (x + 14, y - 35), (x + 14, y - 5), 1)
-        
-        # Thanh chéo gia cố (Crossbeams)
-        pygame.draw.line(screen, (60, 35, 18), (x - 18, y - 10), (x + 14, y - 30), 3)
-        pygame.draw.line(screen, (70, 45, 22), (x - 18, y - 30), (x + 14, y - 10), 3)
+        # Palettes
+        # Stone base: cool blue-grey (hue-shifted shadow — Stardew)
+        ST0 = ( 62,  68,  85)   # Shadow cool stone
+        ST1 = (112, 118, 132)   # Midtone grey
+        ST2 = (168, 174, 190)   # Highlight warm-white
+        STS = (220, 225, 235)   # Specular glint
+        # Moss (warm green — Stardew warm ambient)
+        MS0 = ( 40,  72,  28)   # Moss shadow
+        MS1 = ( 70, 108,  48)   # Moss mid
+        MS2 = (105, 155,  72)   # Moss highlight
+        # Wood: warm brown (hue-shift shadow = purple-brown, highlight = tan-yellow)
+        WD0 = ( 48,  22,  10)   # Shadow dark oak (cool purple-brown)
+        WD1 = ( 95,  55,  22)   # Midtone
+        WD2 = (155,  95,  42)   # Highlight warm oak
+        WDS = (200, 145,  78)   # Specular warm grain
+        # Roof
+        rf_c = (195, 48, 48) if self.level == 1 else (45, 70, 198)
+        rf_h = (235, 88, 88) if self.level == 1 else (88, 118, 238)
+        rf_d = (130, 18, 18) if self.level == 1 else (18, 30, 135)
+        rf_t = (255,155,155) if self.level == 1 else (155,185,255)  # Terminator edge
 
-        # Cung thủ
+        # ── SHADOW ──
+        shd_s = pygame.Surface((60, 22), pygame.SRCALPHA)
+        pygame.draw.ellipse(shd_s, (0, 0, 0, 65), (0, 0, 60, 22))
+        screen.blit(shd_s, (x-30, y+2))
+
+        # ── STONE BASE (3-tone ellipse — Stardew isometric) ──
+        pygame.draw.ellipse(screen, ST0, (x-25, y-6,  50, 22))   # Shadow
+        pygame.draw.ellipse(screen, ST1, (x-25, y-13, 50, 22))   # Midtone
+        pygame.draw.ellipse(screen, ST2, (x-25, y-13, 30, 10))   # Highlight (light from top-left)
+        pygame.draw.circle(screen, STS, (x-12, y-14), 2)          # Specular on stone top
+        # Stone crack details (Stardew texture)
+        pygame.draw.line(screen, ST0, (x-10, y-10), (x-5, y-6), 1)
+        pygame.draw.line(screen, ST0, (x+5,  y-12), (x+10,y-8), 1)
+        # Moss patch (3-tone — warm ambient fill)
+        pygame.draw.ellipse(screen, MS0, (x-20, y-10, 18, 9))
+        pygame.draw.ellipse(screen, MS1, (x-20, y-10, 18, 6))
+        pygame.draw.ellipse(screen, MS2, (x-18, y-10,  8, 4))
+
+        # ── BACK POSTS (3-tone wood grain) ──
+        for px in [x-16, x+12]:
+            pygame.draw.rect(screen, WD0, (px,   y-36, 6, 28), border_radius=1)  # Shadow side
+            pygame.draw.rect(screen, WD1, (px+1, y-36, 4, 28), border_radius=1)  # Midtone
+            pygame.draw.rect(screen, WD2, (px+1, y-36, 2, 28))                   # Highlight
+            # Grain lines (Stardew texture detail)
+            for gy in range(y-33, y-9, 5):
+                pygame.draw.line(screen, WDS, (px+1, gy), (px+4, gy+1), 1)
+
+        # ── FLOOR PLATFORM (3-tone wood ellipse) ──
+        pygame.draw.ellipse(screen, WD0, (x-28, y-38, 56, 16))   # Shadow
+        pygame.draw.ellipse(screen, WD1, (x-28, y-44, 56, 16))   # Midtone
+        pygame.draw.ellipse(screen, WD2, (x-28, y-44, 32, 8))    # Highlight
+        # Wood plank lines
+        for i in range(-14, 20, 7):
+            pygame.draw.line(screen, WD0, (x+i, y-43), (x+i, y-31), 1)
+        # Plank highlight
+        pygame.draw.line(screen, WDS, (x-26, y-44), (x+26, y-44), 1)
+
+        # ── FRONT POSTS (3-tone) ──
+        for px, edge in [(x-22, -1), (x+14, 1)]:
+            pygame.draw.rect(screen, WD0, (px,   y-36, 8, 30), border_radius=1)
+            pygame.draw.rect(screen, WD1, (px+1, y-36, 6, 30), border_radius=1)
+            pygame.draw.rect(screen, WD2, (px+1, y-36, 3, 30))
+            # Grain
+            for gy in range(y-34, y-7, 6):
+                pygame.draw.line(screen, WDS, (px+1, gy), (px+5, gy+1), 1)
+
+        # ── TORCH (animated fire — Hades focal glow) ──
+        tx, ty = x - 22, y - 22
+        pygame.draw.rect(screen, WD0, (tx-2, ty, 5, 7), border_radius=1)
+        pygame.draw.rect(screen, WD1, (tx-2, ty, 5, 4))
+        # Multi-layer glow (Hades technique)
+        _rng.seed(self.shoot_timer)  # Deterministic flicker
+        for radius, col in [(5,(255,120,0,60)),(3,(255,180,30,100)),(2,(255,230,150,180))]:
+            glow = pygame.Surface((radius*2+2, radius*2+2), pygame.SRCALPHA)
+            pygame.draw.circle(glow, col, (radius+1, radius+1), radius)
+            screen.blit(glow, (tx-radius+1, ty-radius-2))
+        for _ in range(3):
+            fx = tx + 1 + _rng.uniform(-1.5, 1.5)
+            fy = ty - _rng.uniform(2, 7)
+            pygame.draw.circle(screen, _rng.choice([(255,100,0),(255,200,30),(255,50,0)]), (int(fx), int(fy)), _rng.randint(1,2))
+
+        # ── CROSSBEAMS (3-tone diagonal) ──
+        pygame.draw.line(screen, WD0, (x-16, y-10), (x+12, y-30), 3)
+        pygame.draw.line(screen, WD1, (x-16, y-10), (x+12, y-30), 2)
+        pygame.draw.line(screen, WD0, (x-16, y-30), (x+12, y-10), 3)
+        pygame.draw.line(screen, WD1, (x-16, y-30), (x+12, y-10), 2)
+
+        # ── ARCHER SPRITE (3-tone Stardew-style) ──
         if self.level == 1:
-            cs = pygame.Surface((26,30), pygame.SRCALPHA)
-            # Thân (giáp da lính)
-            pygame.draw.rect(cs, (160, 140, 100), (9,12,8,10), border_radius=2)
-            pygame.draw.rect(cs, (120, 100, 70), (9,12,8, 5), border_radius=2)
-            # Đầu + mũ nón lá nhỏ (Robin Hood style)
-            pygame.draw.circle(cs, (240, 200, 160),(13, 8), 5)
-            pygame.draw.polygon(cs, (40, 120, 60), [(8,6), (18,6), (13, 0)])
-            # Cung gỗ
-            pygame.draw.arc(cs, (100, 60, 20), (2,2,12,20), 0, math.pi, 3)
-            pygame.draw.line(cs, (200, 200, 200), (8,2), (8,22), 1)
-            # Tên đang giương
-            pygame.draw.line(cs, (220, 220, 220),(16,12),(8, 12), 2)
-            rotated = pygame.transform.rotate(cs, self.angle)
-            rect = rotated.get_rect(center=(x, y-48))
-            screen.blit(rotated, rect.topleft)
-        else:
-            # Cung thủ cấp 2 (Elite Crossbow / Sniper)
-            cs = pygame.Surface((28,32), pygame.SRCALPHA)
-            pygame.draw.rect(cs, (40, 40, 50), (10,14,8,12), border_radius=2)
-            pygame.draw.rect(cs, (80, 80, 90), (10,14,8, 6), border_radius=2)
-            pygame.draw.circle(cs, (240, 200, 160),(14, 9), 5)
-            # Mũ sắt thép
-            pygame.draw.polygon(cs, (160, 170, 180), [(9,8), (19,8), (14, 2)])
-            pygame.draw.polygon(cs, (200, 210, 220), [(11,8), (17,8), (14, 2)])
-            # Nỏ (Crossbow) bằng kim loại
-            pygame.draw.rect(cs, (100, 80, 50), (12, 10, 4, 18))
-            pygame.draw.polygon(cs, (180, 190, 200), [(4,15), (24,15), (14, 10)])
-            pygame.draw.line(cs, (250, 250, 250), (4,15), (14,24), 1)
-            pygame.draw.line(cs, (250, 250, 250), (24,15), (14,24), 1)
-            rotated = pygame.transform.rotate(cs, self.angle)
+            cs = pygame.Surface((30, 34), pygame.SRCALPHA)
+            SK1 = (228, 182, 142); SK2 = (255, 218, 178); SK0 = (190, 120, 80)
+            LD1 = (155, 128,  88); LD2 = (200, 168, 115)  # Leather
+            # Body (3-tone leather)
+            pygame.draw.rect(cs, LD1, (10,14, 9,12), border_radius=2)
+            pygame.draw.rect(cs, LD2, (10,14, 6, 6), border_radius=2)
+            # Head (3-tone skin)
+            pygame.draw.circle(cs, SK0, (14, 8), 6)
+            pygame.draw.circle(cs, SK1, (13, 7), 5)
+            pygame.draw.circle(cs, SK2, (12, 6), 3)
+            # Robin Hood hat (3-tone green)
+            pygame.draw.polygon(cs, (28, 90, 40), [(8,7),(20,7),(14,-1)])
+            pygame.draw.polygon(cs, (50,130, 62), [(10,7),(18,7),(14, 1)])
+            # Bow (3-tone wood)
+            pygame.draw.arc(cs, WD0, (1, 2,14,22), 0, math.pi, 3)
+            pygame.draw.arc(cs, WD1, (1, 2,14,22), 0, math.pi, 2)
+            pygame.draw.line(cs, (195,195,210), (8,2),(8,24), 1)  # String
+            pygame.draw.line(cs, (220,220,220),(18,13),(8,13), 2)  # Arrow
+            # Lean then rotate
+            cs_leaned = pygame.transform.rotate(cs, self.lean_angle)
+            rotated = pygame.transform.rotate(cs_leaned, self.angle)
             rect = rotated.get_rect(center=(x, y-50))
             screen.blit(rotated, rect.topleft)
+        else:
+            # Elite archer — steel armor 3-tone
+            cs = pygame.Surface((30, 36), pygame.SRCALPHA)
+            STA = (100,108,128); STB = (165,172,188); STC = (215,222,238); SS=(252,252,232)
+            SK1 = (228, 182, 142); SK2 = (255, 218, 178)
+            # Body armor
+            pygame.draw.rect(cs, STA, (10,14, 9,14), border_radius=2)
+            pygame.draw.rect(cs, STB, (10,14, 9, 8), border_radius=2)
+            pygame.draw.rect(cs, STC, (10,14, 6, 4), border_radius=2)
+            # Head
+            pygame.draw.circle(cs, SK1, (14, 8), 6)
+            pygame.draw.circle(cs, SK2, (13, 7), 3)
+            # Steel helmet (3-tone)
+            pygame.draw.polygon(cs, STA, [(8,8),(20,8),(14, 1)])
+            pygame.draw.polygon(cs, STB, [(10,8),(18,8),(14, 2)])
+            pygame.draw.circle(cs, SS,  (11, 3), 1)  # Helm specular
+            # Crossbow (3-tone)
+            pygame.draw.rect(cs, WD1, (12,10, 4,20))
+            pygame.draw.polygon(cs, STA, [(3,16),(25,16),(14,10)])
+            pygame.draw.polygon(cs, STB, [(4,16),(24,16),(14,11)])
+            pygame.draw.line(cs,   STC, (3,16),(14,26), 1)
+            pygame.draw.line(cs,   STC, (25,16),(14,26), 1)
+            pygame.draw.circle(cs, SS, (5, 17), 1)  # Bow arm specular
+            rotated = pygame.transform.rotate(cs, self.angle)
+            rect = rotated.get_rect(center=(x, y-52))
+            screen.blit(rotated, rect.topleft)
 
-        # Mái bạt (Tent Roof)
-        roof_c = (200, 60, 60) if self.level == 1 else (60, 80, 200)
-        roof_l = (240, 90, 90) if self.level == 1 else (90, 120, 240)
-        roof_d = (140, 30, 30) if self.level == 1 else (30, 40, 140)
-        
-        # Vải bạt sau
-        pygame.draw.polygon(screen, roof_d, [(x - 26, y - 46), (x + 26, y - 46), (x, y - 65)])
-        # Vải bạt trước
-        pygame.draw.polygon(screen, roof_c, [(x - 28, y - 42), (x, y - 75), (x + 28, y - 42), (x, y - 50)])
-        pygame.draw.polygon(screen, roof_l, [(x - 28, y - 42), (x, y - 75), (x, y - 50)]) # Sáng 1 bên
-        # Cột cờ trên đỉnh
-        pygame.draw.line(screen, (50, 30, 15), (x, y - 75), (x, y - 90), 2)
-        flag_c = (255, 200, 50) if self.level == 1 else (50, 255, 100)
-        pygame.draw.polygon(screen, flag_c, [(x, y - 90), (x + 12, y - 86), (x, y - 82)])
+        # ── TENT ROOF (3-tone — Stardew warm light from top) ──
+        # Shadow back face
+        pygame.draw.polygon(screen, rf_d, [(x-28,y-46),(x+28,y-46),(x,y-66)])
+        # Main front face (2 sides)
+        pygame.draw.polygon(screen, rf_c, [(x-30,y-42),(x,y-78),(x+30,y-42),(x,y-52)])
+        # Highlight left side (light from top-left)
+        pygame.draw.polygon(screen, rf_h, [(x-30,y-42),(x,y-78),(x,y-52)])
+        # Terminator line at ridge (Hades style)
+        pygame.draw.line(screen, rf_t, (x-30,y-42),(x,y-78), 1)
+        # Flag pole + flag (3-tone)
+        pygame.draw.line(screen, WD0, (x, y-78),(x, y-94), 2)
+        pygame.draw.line(screen, WD2, (x+1, y-78),(x+1, y-94), 1)
+        flag_c2 = (255,210,60) if self.level == 1 else (60,255,120)
+        flag_h2 = (255,245,180) if self.level == 1 else (180,255,210)
+        pygame.draw.polygon(screen, flag_c2, [(x,y-94),(x+14,y-90),(x,y-84)])
+        pygame.draw.polygon(screen, flag_h2, [(x,y-94),(x+14,y-90),(x,y-89)])  # Flag highlight
 
-        # Muzzle Flash (Chớp lửa)
+        # ── MUZZLE FLASH (Hades multi-layer glow) ──
         if self.shoot_timer > 0:
-            import random
-            flash_radius = 6 + (self.shoot_timer * 2)
-            fx = x + math.cos(math.radians(-self.angle + 90)) * 24
-            fy = (y - 48) - math.sin(math.radians(-self.angle + 90)) * 24
-            s = pygame.Surface((30, 30), pygame.SRCALPHA)
-            pygame.draw.circle(s, (255, 200, 50, 150), (15, 15), flash_radius)
-            pygame.draw.circle(s, (255, 255, 200, 255), (15, 15), flash_radius // 2)
-            screen.blit(s, (fx - 15, fy - 15))
+            flash_r = 5 + self.shoot_timer * 2
+            fx = x + math.cos(math.radians(-self.angle+90)) * 26
+            fy = (y-50) - math.sin(math.radians(-self.angle+90)) * 26
+            for r, col in [(flash_r+4,(255,180,50,60)),(flash_r,(255,220,100,130)),(flash_r//2,(255,255,220,220))]:
+                gf = pygame.Surface((r*2+4, r*2+4), pygame.SRCALPHA)
+                pygame.draw.circle(gf, col, (r+2, r+2), r)
+                screen.blit(gf, (int(fx)-r-2, int(fy)-r-2))
+
+
 
     def upgrade(self):
         if self.level >= 2:
@@ -203,8 +289,8 @@ class MagicTower(Tower):
         self.range        = 130
         self.damage       = 45
         self.cooldown     = 70
-        self.upgrade_cost = 90
-        self.total_gold_spent = 80
+        self.upgrade_cost = 130
+        self.total_gold_spent = 110
         self.aoe_radius   = AOE_RADIUS   # Bán kính nổ từ settings.py
 
     def update(self, wave_manager, bullets):
@@ -230,6 +316,7 @@ class MagicTower(Tower):
                 ))
                 self.cooldown_timer = self.cooldown
                 self.shoot_timer = self.flash_duration
+                play_sound("shoot_magic")
 
     def draw(self, screen):
         """Tháp Pha Lê: Khối Obelisk đá đen bí ẩn, pha lê bay lơ lửng."""
@@ -266,6 +353,16 @@ class MagicTower(Tower):
         halo = pygame.Surface((halo_r*2, halo_r*2), pygame.SRCALPHA)
         pygame.draw.circle(halo, (180, 50, 255, 40), (halo_r, halo_r), halo_r)
         screen.blit(halo, (x - halo_r, c_y - halo_r))
+        
+        # Vòng sáng ma thuật (Pulse Rings)
+        t = pygame.time.get_ticks() * 0.001
+        for i in range(2):
+            phase = (t + i * 0.5) % 1.0
+            r = int(10 + phase * 35)
+            alpha = int(150 * (1.0 - phase))
+            ring = pygame.Surface((r*2, r*2), pygame.SRCALPHA)
+            pygame.draw.circle(ring, (200, 100, 255, alpha), (r, r), r, max(1, int(3 * (1.0 - phase))))
+            screen.blit(ring, (x - r, c_y - r))
 
         # Lõi pha lê (Crystal Core)
         col_drk = (120, 20, 200) if self.level == 1 else (200, 20, 120)

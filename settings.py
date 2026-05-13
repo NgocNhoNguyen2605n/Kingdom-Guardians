@@ -12,12 +12,12 @@ Nhóm hằng số:
     Vật liệu: WOOD_COLOR, STONE_COLOR, GRASS_LIGHT, DIRT_PATH, ... — màu chủ đề.
 """
 # Cấu hình cửa sổ game
-WIDTH = 800
-HEIGHT = 600
+WIDTH = 1280
+HEIGHT = 720
 FPS = 60
 
 # Cấu hình lưới bản đồ
-TILE_SIZE = 40
+TILE_SIZE = 32
 ROWS = HEIGHT // TILE_SIZE
 COLS = WIDTH // TILE_SIZE
 
